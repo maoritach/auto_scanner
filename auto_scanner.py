@@ -1,20 +1,18 @@
 import requests
 import time
+import json
 from pprint import pprint
 import pandas as pd
 
-def Crawler(api_key, target_url, project_id):
-    if target_url not in ['app', 'eu']:
+def Crawler(api_key, cluster, project_id):
+    if cluster not in ['app', 'eu']:
         print("Invalid target URL. Please choose 'app' or 'eu'.")
         return
 
-    url = f"https://{target_url}.brightsec.com/api/v1/scans"
+    url = f"https://{cluster}.brightsec.com/api/v1/scans"
     
     api = "api-key "
     full_api_key = str(api + api_key)
-
-    print(f"API Key: {full_api_key}")
-
     scan_name = input("Enter scan name: ")
     host_name = input("Enter URL to start crawling from: ")
     template_id = None
@@ -24,9 +22,38 @@ def Crawler(api_key, target_url, project_id):
     if user_provided_template_id:
         template_id = user_provided_template_id
 
-    user_provided_auth_id = input("Enter auth ID (press Enter to skip auth ID): ")
-    if user_provided_auth_id:
-        auth_id = user_provided_auth_id
+    user_selected_auth = input('Would you like to use authentication object? (yes/no): ').lower()
+    if user_selected_auth == "yes":
+        headers = {
+            'accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': full_api_key
+        }
+        get_auth = requests.get(f"https://{cluster}.brightsec.com/api/v2/auth-objects", headers=headers)
+
+        if get_auth.status_code == 200:
+            data = json.loads(get_auth.text)
+            items = data.get("items", [])
+
+            if items:
+                for i, item in enumerate(items, start=1):
+                    auth_name = item.get("name")
+                    auth_id = item.get("id")
+                    print(f"{i}. {auth_name} - {auth_id}")
+
+                # Allow the user to choose the number of the authentication object
+                auth_choice = int(input("Choose the number of the authentication object you want to use: "))
+                if 1 <= auth_choice <= len(items):
+                    auth_id = items[auth_choice - 1]["id"]
+                else:
+                    print("Invalid choice. Please select a valid number.")
+            else:
+                print("No authentication objects found.")
+        else:
+            print(f"Failed to retrieve authentication objects. Status code: {get_auth.status_code}, or make sure that the auth object has a project assigned to it")
+            exit()
+    else:
+        auth_id = None
 
     use_repeater = input("Use repeater? (yes/no): ").lower()
     repeater_ids = []
@@ -80,42 +107,28 @@ def Crawler(api_key, target_url, project_id):
     if repeater_ids:
         data["repeaters"] = repeater_ids
 
-    print("Request Data:")
-    pprint(data)
-
     print("Sending POST request to create a scan...")
-    start_scan = requests.post(url, headers=headers, json=data)
-
-    print("Request:")
-    print(start_scan.request.method, start_scan.request.url)
-    print("Request Headers:")
-    pprint(dict(start_scan.request.headers))
-    print("Request Body:")
-    pprint(data)
-    print("Response:")
-    print(start_scan.status_code)
-    pprint(start_scan.json())
-    
+    start_scan = requests.post('https://app.brightsec.com/api/v1/scans', headers=headers, json=data)
     if start_scan.status_code == 201:
         scan_id = start_scan.json().get('id')
-        return scan_id
+        print(f"Scan started successfuly with ID: {scan_id}")
+        exit(0)
     else:
         print("Failed to create a scan")
         return None
 
-def HAR(api_key, target_url, project_id):
-    if target_url not in ['app', 'eu']:
+def har(api_key, cluster, project_id):
+    if cluster not in ['app', 'eu']:
         print("Invalid target URL. Please choose 'app' or 'eu'.")
         return
-
-    api = "api-key "
-    har_name = input("Enter HAR file name: ")
+    
+    har_name = input("Enter Har file name: ")
 
     if not har_name.endswith(".har"):
         har_name += ".har"
 
     har_file = har_name
-    url = f"https://{target_url}.brightsec.com/api/v1/projects/{project_id}/files"
+    url = f"https://{cluster}.brightsec.com/api/v1/projects/{project_id}/files"
     
     headers = {
         "accept": "application/json",
@@ -125,9 +138,10 @@ def HAR(api_key, target_url, project_id):
     files = {"file": (har_file, open(har_file, "rb"))}
 
     response = requests.post(url, headers=headers, files=files)
-
+    response_data = response.json()
     if response.status_code == 200 or response.status_code == 201:
-        print("HAR file uploaded successfully")
+        print("Har file uploaded successfully")
+    fileId = response_data.get("id")
 
     scan_name = input("Enter scan name: ")
     template_id = None
@@ -137,9 +151,38 @@ def HAR(api_key, target_url, project_id):
     if user_provided_template_id:
         template_id = user_provided_template_id
 
-    user_provided_auth_id = input("Enter auth ID (press Enter to skip auth ID): ")
-    if user_provided_auth_id:
-        auth_id = user_provided_auth_id
+    user_selected_auth = input('Would you like to use authentication object? (yes/no): ').lower()
+    if user_selected_auth == "yes":
+        headers = {
+            'accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': f'api-key {api_key}'
+        }
+        get_auth = requests.get(f"https://{cluster}.brightsec.com/api/v2/auth-objects", headers=headers)
+
+        if get_auth.status_code == 200:
+            data = json.loads(get_auth.text)
+            items = data.get("items", [])
+
+            if items:
+                for i, item in enumerate(items, start=1):
+                    auth_name = item.get("name")
+                    auth_id = item.get("id")
+                    print(f"{i}. {auth_name} - {auth_id}")
+
+                # Allow the user to choose the number of the authentication object
+                auth_choice = int(input("Choose the number of the authentication object you want to use: "))
+                if 1 <= auth_choice <= len(items):
+                    auth_id = items[auth_choice - 1]["id"]
+                else:
+                    print("Invalid choice. Please select a valid number.")
+            else:
+                print("No authentication objects found.")
+        else:
+            print(f"Failed to retrieve authentication objects. Status code: {get_auth.status_code}, or make sure that the auth object has a project assigned to it")
+            exit()
+    else:
+        auth_id = None
 
     use_repeater = input("Use repeater? (yes/no): ").lower()
     repeater_ids = []
@@ -158,7 +201,7 @@ def HAR(api_key, target_url, project_id):
         "discoveryTypes": ["archive"],
         "poolSize": 50,
         "attackParamLocations": ["query", "fragment", "body"],
-        "fileId": "kRvycMy3PkWwvs1ZD1tqF1",
+        "fileId": f"{fileId}",
         "hostsFilter": ["brokencrystals.com"],
         "smart": True,
         "optimizedCrawler": True,
@@ -194,39 +237,26 @@ def HAR(api_key, target_url, project_id):
     if repeater_ids:
         data["repeaters"] = repeater_ids
 
-    print("Request Data:")
-    pprint(data)
-
     print("Sending POST request to create a scan...")
-    start_scan = requests.post(url, headers=headers, json=data)
-
-    print("Request:")
-    print(start_scan.request.method, start_scan.request.url)
-    print("Request Headers:")
-    pprint(dict(start_scan.request.headers))
-    print("Request Body:")
-    pprint(data)
-    print("Response:")
-    print(start_scan.status_code)
-    pprint(start_scan.json())
-    
+    start_scan = requests.post('https://app.brightsec.com/api/v1/scans', headers=headers, json=data)
     if start_scan.status_code == 201:
         scan_id = start_scan.json().get('id')
-        return scan_id
+        print(f"Scan started successfuly with ID: {scan_id}")
+        exit(0)
     else:
         print("Failed to create a scan")
         return None
 
-def get_scan_details(scan_id, api_key, target_url):
+def get_scan_details(scan_id, api_key, cluster):
     if scan_id is None:
         print("Invalid scan ID")
         return
 
-    if target_url not in ['app', 'eu']:
+    if cluster not in ['app', 'eu']:
         print("Invalid target URL. Please choose 'app' or 'eu'.")
         return
 
-    url = f"https://{target_url}.brightsec.com/api/v1/scans/{scan_id}"
+    url = f"https://{cluster}.brightsec.com/api/v1/scans/{scan_id}"
     
     headers = {
         'accept': 'application/json',
@@ -234,7 +264,7 @@ def get_scan_details(scan_id, api_key, target_url):
         'Authorization': f'api-key {api_key}'
     }
 
-    print(f"Sending GET request to retrieve scan details for {target_url}...")
+    print(f"Sending GET request to retrieve scan details for {cluster}...")
     scan_details_response = requests.get(url, headers=headers)
 
     if scan_details_response.status_code == 200:
@@ -247,13 +277,14 @@ def get_scan_details(scan_id, api_key, target_url):
         scan_details_df.to_csv(file_name, index=False)
 
         print(f"Scan details saved to {file_name}")
+        exit(0)
     else:
         print(f"Failed to retrieve scan details. Status code: {scan_details_response.status_code}")
 
 # Main logic - moved API key, target URL, and project ID here as they're used every time.
 while True:
     print("Choose an option:")
-    print("[1] HAR")
+    print("[1] Har")
     print("[2] Crawler")
     print("[3] Get Scan Details")
     print("[4] Quit")
@@ -261,37 +292,37 @@ while True:
     choice = input(">>> ")
 
     if choice == '1':
-        target_url = input("Choose Target URL (app/eu): ")
-        if target_url not in ['app', 'eu']:
+        cluster = input("Choose Cluster (app/eu): ")
+        if cluster not in ['app', 'eu']:
             print("Invalid target URL. Please choose 'app' or 'eu'.")
             continue
         api_key = input("Enter API Key: ")
         project_id = input("Enter Project ID: ")
-        HAR(api_key, target_url, project_id)
+        har(api_key, cluster, project_id)
     elif choice == '2':
-        target_url = input("Choose Target URL (app/eu): ")
-        if target_url not in ['app', 'eu']:
+        cluster = input("Choose Cluster (app/eu): ")
+        if cluster not in ['app', 'eu']:
             print("Invalid target URL. Please choose 'app' or 'eu'.")
             continue
         api_key = input("Enter API Key: ")
         project_id = input("Enter Project ID: ")
-        scan_id = Crawler(api_key, target_url, project_id)
-        if scan_id:
-            while True:
-                scan_details = get_scan_details(scan_id, api_key, target_url)
-                if scan_details.get('status') == 'completed':
-                    print("Scan completed.")
-                    break
-                time.sleep(30)
+        scan_id = Crawler(api_key, cluster, project_id)
+        # if scan_id:
+        #     while True:
+        #         scan_details = get_scan_details(scan_id, api_key, cluster)
+        #         if scan_details.get('status') == 'completed':
+        #             print("Scan completed.")
+        #             break
+        #         time.sleep(30)
     elif choice == '3':
-        target_url = input("Choose Target URL (app/eu): ")
-        if target_url not in ['app', 'eu']:
+        cluster = input("Choose Cluster (app/eu): ")
+        if cluster not in ['app', 'eu']:
             print("Invalid target URL. Please choose 'app' or 'eu'.")
             continue
         api_key = input("Enter API Key: ")
         project_id = input("Enter Project ID: ")
         scan_id = input("Enter Scan ID: ")
-        get_scan_details(scan_id, api_key, target_url)
+        get_scan_details(scan_id, api_key, cluster)
     elif choice == '4':
         break
     else:
